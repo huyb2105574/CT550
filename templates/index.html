@@ -5,11 +5,114 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Piano Gesture Recognition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <style>
+        .highlight {
+            background-color: yellow;
+            font-weight: bold;
+            padding: 5px;
+            border-radius: 5px;
+            transition: background-color 0.3s ease-in-out;
+        }
+        #current_note {
+            font-size: 32px; /* Tăng kích thước chữ */
+            font-weight: bold; /* Làm đậm chữ */
+            text-align: center; /* Căn giữa chữ */
+            color: white; /* Màu chữ đỏ */
+            background-color: gray; /* Nền màu vàng */
+            padding: 10px; /* Tạo khoảng cách bên trong */
+            border-radius: 5px; /* Bo góc */
+        }
+        #song_notes {
+            font-size: 32px; /* Tăng kích thước chữ */
+            font-weight: bold; /* Chữ in đậm */
+            text-align: center; /* Căn giữa */
+            color: rgb(0, 157, 255); /* Màu chữ xanh */
+            background-color: lightblue; /* Nền xanh nhạt */
+            padding: 15px; /* Tăng khoảng cách bên trong */
+            border-radius: 8px; /* Bo góc */
+        }
+    </style>
 </head>
 
-<body>
-    <h1>Nhận diện cử chỉ chơi đàn piano 🎹</h1>
-    <img src="{{ url_for('video_feed') }}" width="640" height="480">
+<body class="container mt-4">
+    <div class="row">
+        <div class="col-md-6">
+            <h2>🎵 Chọn bài hát</h2>
+            <div class="input-group mb-3">
+                <select id="songSelector" class="form-select">
+                    <option value="" disabled selected>Chọn bài hát...</option>
+                    <option value="Happy Birthday">Happy Birthday</option>
+                    <option value="Twinkle Twinkle">Twinkle Twinkle</option>
+                    <option value="Đàn gà con">Đàn gà con</option>
+                    <option value="Kìa con bướm vàng">Kìa con bướm vàng</option>
+                </select>
+                <button class="btn btn-primary" onclick="confirmSong()">Chọn</button>
+            </div>
+    
+            <h2>🎼 Bài hát hiện tại</h2>
+            <p id="song_notes" class="alert alert-info">Chưa chọn bài</p>
+    
+            <h2>🎹 Nốt đang nhấn:</h2>
+            <p id="current_note" class="alert alert-warning">---</p>
+        </div>
+    
+        <!-- Cột 2: Hiển thị Camera -->
+        <div class="col-md-6 text-center full-height">
+            <img src="{{ url_for('video_feed') }}" class="img-fluid border rounded" width="640" height="480">
+        </div>
+    </div>
+
+    
+
+    <script>
+        var socket = io.connect("http://" + document.domain + ":" + location.port);
+        var currentIndex = 0; // Chỉ số của nốt hiện tại
+
+        function confirmSong() {
+            var songName = $("#songSelector").val();
+            if (songName) {
+                fetch('/set_song/' + songName)
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log("Bài hát đã chọn:", data.song);
+                        currentIndex = 0; // Reset về nốt đầu tiên
+                    });
+            } else {
+                alert("Vui lòng chọn một bài hát!");
+            }
+        }
+
+        socket.on('update_song', function (data) {
+            let notesHtml = data.notes.map((note, index) =>
+                `<span class="song-note ${index === 0 ? 'highlight' : ''}">${note}</span>`).join(" ");
+            $("#song_notes").html(`${notesHtml}`);
+            currentIndex = 0; // Bắt đầu từ nốt đầu tiên
+        });
+
+        socket.on('note_pressed', function (data) {
+                document.getElementById('current_note').innerText = "" + data.note;
+            });
+
+        socket.on('note_pressed', function (data) {
+            let notes = $(".song-note");
+            let currentNote = notes.eq(currentIndex).text();
+
+            // Kiểm tra nếu nốt được nhấn là nốt đúng
+            if (data.note === currentNote) {
+                notes.eq(currentIndex).removeClass("highlight").addClass("text-success"); // Đánh dấu đã nhấn thành công
+                currentIndex++;
+
+                if (currentIndex < notes.length) {
+                    notes.eq(currentIndex).addClass("highlight"); // Highlight nốt tiếp theo
+                }
+            }
+        });
+    </script>
 </body>
 
 </html>
