@@ -39,35 +39,77 @@
     </style>
 </head>
 
-<body class="container mt-4">
-    <div class="row">
-        <div class="col-md-6">
-            <h2>🎵 Chọn bài hát</h2>
-            <div class="input-group mb-3">
-                <select id="songSelector" class="form-select">
-                    <option value="" disabled selected>Chọn bài hát...</option>
-                    <option value="Happy Birthday">Happy Birthday</option>
-                    <option value="Twinkle Twinkle">Twinkle Twinkle</option>
-                    <option value="Đàn gà con">Đàn gà con</option>
-                    <option value="Kìa con bướm vàng">Kìa con bướm vàng</option>
-                </select>
-                <button class="btn btn-primary" onclick="confirmSong()">Chọn</button>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Piano</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <!-- <a class="nav-link" href="#" onclick="showLeaderboard()">Bảng xếp hạng</a> -->
+                    </li>
+                </ul>
             </div>
-    
-            <h2>🎼 Bài hát hiện tại</h2>
-            <p id="song_notes" class="alert alert-info">Chưa chọn bài</p>
-    
-            <h2>🎹 Nốt đang nhấn:</h2>
-            <p id="current_note" class="alert alert-warning">---</p>
         </div>
-    
-        <!-- Cột 2: Hiển thị Camera -->
-        <div class="col-md-6 text-center full-height">
-            <img src="{{ url_for('video_feed') }}" class="img-fluid border rounded" width="640" height="480">
+    </nav>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-6">
+                <h2>🎵 Chọn bài hát</h2>
+                <div class="input-group mb-3">
+                    <select id="songSelector" class="form-select">
+                        <option value="" disabled selected>Chọn bài hát...</option>
+                        <option value="Happy Birthday">Happy Birthday</option>
+                        <option value="Twinkle Twinkle">Twinkle Twinkle</option>
+                        <option value="Đàn gà con">Đàn gà con</option>
+                        <option value="Kìa con bướm vàng">Kìa con bướm vàng</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="confirmSong()">Chọn</button>
+                </div>
+        
+                <h2>🎼 Bài hát hiện tại</h2>
+                <p id="song_notes" class="alert alert-info">Chưa chọn bài</p>
+                <!-- <h2>🏆 Điểm số: <span id="score">0</span></h2> -->
+                <h2>🎹 Nốt đang nhấn:</h2>
+                <p id="current_note" class="alert alert-warning">---</p>
+            </div>
+        
+            <!-- Cột 2: Hiển thị Camera -->
+            <div class="col-md-6 text-center full-height">
+                <img src="{{ url_for('video_feed') }}" class="img-fluid border rounded" width="640" height="480">
+            </div>
         </div>
     </div>
 
-    
+    <!-- Modal hiển thị kỷ lục -->
+    <div class="modal fade" id="leaderboardModal" tabindex="-1" aria-labelledby="leaderboardModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="leaderboardModalLabel">🎖 Bảng kỷ lục</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Hạng</th>
+                                <th>Tên</th>
+                                <th>Điểm</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboardBody">
+                            <!-- Dữ liệu sẽ được cập nhật bằng JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <script>
         var socket = io.connect("http://" + document.domain + ":" + location.port);
@@ -110,8 +152,74 @@
                 if (currentIndex < notes.length) {
                     notes.eq(currentIndex).addClass("highlight"); // Highlight nốt tiếp theo
                 }
+
+                if (currentIndex >= notes.length) {
+                    endGame(); // Lưu điểm
+                }
+
             }
         });
+        var score = 0; // Biến lưu điểm số
+
+            socket.on('note_pressed', function (data) {
+                let notes = $(".song-note");
+                let currentNote = notes.eq(currentIndex).text();
+
+                if (data.note === currentNote) {
+                    notes.eq(currentIndex).removeClass("highlight").addClass("text-success"); // Đánh dấu đúng
+                    score += 10; // Cộng điểm
+                    currentIndex++;
+                    if (currentIndex < notes.length) {
+                        notes.eq(currentIndex).addClass("highlight"); // Highlight nốt tiếp theo
+                    }
+                } else {
+                    score -= 5; // Trừ điểm khi sai
+                }
+
+                // Cập nhật điểm số trên giao diện
+                $("#score").text(score);
+            });
+            function saveScore(playerName, score) {
+                    let songName = $("#songSelector").val(); // Lấy bài hát hiện tại
+                    fetch('/save_score', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ player_name: playerName, score: score, song_name: songName })
+                    })
+                        .then(response => response.json())
+                        .then(data => alert(data.message))
+                        .catch(error => console.error("Lỗi:", error));
+                }
+
+                // Khi hoàn thành bài hát, lưu điểm
+                function endGame() {
+                    let playerName = prompt("Nhập tên của bạn:");
+                    if (playerName) {
+                        saveScore(playerName, score);
+                    }
+                }
+                // Gửi yêu cầu lấy bảng xếp hạng
+                    function showLeaderboard() {
+                        fetch('/get_leaderboard')
+                            .then(response => response.json())
+                            .then(data => {
+                                let leaderboardBody = document.getElementById('leaderboardBody');
+                                leaderboardBody.innerHTML = ""; // Xóa dữ liệu cũ
+
+                                data.forEach((record, index) => {
+                                    let row = `<tr>
+                    <td>${index + 1}</td>
+                    <td>${record.player_name}</td>
+                    <td>${record.score}</td>
+                </tr>`;
+                                    leaderboardBody.innerHTML += row;
+                                });
+
+                                // Hiển thị modal
+                                new bootstrap.Modal(document.getElementById('leaderboardModal')).show();
+                            })
+                            .catch(error => console.error("Lỗi khi lấy bảng xếp hạng:", error));
+                    }
     </script>
 </body>
 

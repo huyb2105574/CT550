@@ -7,10 +7,29 @@ from flask import Flask, Response, render_template
 from flask_socketio import SocketIO, emit
 import time
 import math
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
 
-# Khởi tạo Flask
-app = Flask(__name__)
+db = SQLAlchemy()
+
+def create_app():
+    app = Flask(__name__)
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///highscores.db'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    db.init_app(app)
+    with app.app_context():
+        db.create_all()
+    return app
+
+app = create_app()
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+class HighScore(db.Model):
+    __tablename__ = "high_score"
+    id = db.Column(db.Integer, primary_key=True)
+    player_name = db.Column(db.String(100), nullable=False)
+    score = db.Column(db.Integer, nullable=False)
+    song_name = db.Column(db.String(100), nullable=False)
 
 # Khởi tạo pygame để phát âm thanh
 pygame.init()
@@ -96,14 +115,14 @@ def load_song(song_name):
     songs = {
         "Happy Birthday": ["C4", "C4", "D4", "C4", "F4", "E4"],
         "Twinkle Twinkle": ["C4", "C4", "G4", "G4", "A4", "A4", "G4"],
-        "Đàn gà con": ["F4", "F4", "C4", "C4", "D4", "D4", "C4",
+        "Đàn gà con": ["F4", "F4", "C4", "C4", "D4", "D4", "C4",
                        "F4", "F4", "C4", "C4", "D4", "D4", "C4",
                        "F4", "C4", "D4", "C4", "F4", "C4", "D4", "C4",
                        "C4", "C4", "D4", "E4", "F4", "F4",
                        "C4", "C4", "D4", "E4", "F4", "F4",
                        "C4", "D4", "F4", "C4", "F4", "D4", "F4", "C4"
                        ],
-        "Kìa con bướm vàng": ["C4", "D4", "E4", "C4", "C4", "D4", "E4", "C4",
+        "Kìa con bướm vàng": ["C4", "D4", "E4", "C4", "C4", "D4", "E4", "C4",
                              "E4", "F4", "G4", "E4", "F4", "G4",
                              "G4", "A4", "G4", "F4", "E4", "C4", "G4", "A4", "G4", "F4", "E4", "C4",
                              "C4", "G4", "C4", "C4", "G4", "C4"
@@ -114,9 +133,10 @@ def load_song(song_name):
     socketio.emit('update_song', {'notes': current_song, 'current_index': current_note_index})
 
 def generate_frames():
-    global pressed_keys
+    global pressed_keys, black_keys
     previous_pressed_keys = set()
     global current_note_index
+    black_keys = ["Db4", "Eb4", "Gb4", "Ab4", "Bb4", "Db5", "Eb5", "Gb5", "Ab5", "Bb5"]
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -129,70 +149,78 @@ def generate_frames():
 
         if result.multi_hand_landmarks:
             for hand_landmarks in result.multi_hand_landmarks:
-
-                h, w, _ = frame.shape 
-                # Lấy tọa độ các điểm landmark của ngón trỏ
+                h, w, _ = frame.shape  
                 landmarks = hand_landmarks.landmark
+                
+                # Lấy tọa độ các điểm trên ngón trỏ
                 index_tip = (landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].x * w,
-                             landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].y * h)
+                            landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].y * h)
                 index_dip = (landmarks[mp_hands.HandLandmark.INDEX_FINGER_DIP].x * w,
-                             landmarks[mp_hands.HandLandmark.INDEX_FINGER_DIP].y * h)
+                            landmarks[mp_hands.HandLandmark.INDEX_FINGER_DIP].y * h)
                 index_pip = (landmarks[mp_hands.HandLandmark.INDEX_FINGER_PIP].x * w,
-                             landmarks[mp_hands.HandLandmark.INDEX_FINGER_PIP].y * h)
+                            landmarks[mp_hands.HandLandmark.INDEX_FINGER_PIP].y * h)
                 index_mcp = (landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].x * w,
-                             landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].y * h)
+                            landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].y * h)
+
                 # Tính góc giữa các đốt ngón trỏ
                 angle = calculate_angle(index_tip, index_dip, index_pip)
                 distance = calculate_distance(index_tip, index_mcp)
-                black_keys = ["Db4", "Eb4", "Gb4", "Ab4", "Bb4", "Db5", "Eb5", "Gb5", "Ab5", "Bb5"]
-                for id in [8]:  # Ngón trỏ
-                    lm = hand_landmarks.landmark[id]
-                    h, w, _ = frame.shape
-                    cx, cy = int(lm.x * w), int(lm.y * h)
-                    key_found = None
 
-                    # Ưu tiên kiểm tra phím đen trước
+                # Danh sách các phím đen (ưu tiên kiểm tra trước)
+                
+
+                key_found = None
+
+                # Chỉ kiểm tra phím với đầu ngón trỏ
+                if angle < curl_threshold or distance < min_distance:
                     for key in black_keys:
-                        if is_inside_zone((cx, cy), key_zones[key]) and (angle < curl_threshold or distance < min_distance):
+                        if is_inside_zone(index_tip, key_zones[key]):
                             key_found = key
-                            break  # Nếu đã tìm thấy phím đen, dừng kiểm tra tiếp
+                            break  
 
-                    # Nếu không có phím đen, mới kiểm tra phím trắng
                     if not key_found:
                         for key in key_zones:
-                            if key not in black_keys and is_inside_zone((cx, cy), key_zones[key]) and (angle < curl_threshold or distance < min_distance):
+                            if key not in black_keys and is_inside_zone(index_tip, key_zones[key]):
                                 key_found = key
                                 break  
 
-                    if key_found:
-                        current_pressed_keys.add(key_found)
+                if key_found:
+                    current_pressed_keys.add(key_found)
 
-                        # Kiểm tra nếu phím chưa từng nhấn hoặc đã qua delay giây từ lần nhấn trước
-                        last_pressed_time = pressed_keys.get(key_found, 0)
-                        current_time = time.time()
+                    last_pressed_time = pressed_keys.get(key_found, 0)
+                    current_time = time.time()
 
-                        if key_found not in previous_pressed_keys and key_found in sounds and (
-                                current_time - last_pressed_time > delay):
-                            sounds[key_found].play()
-                            socketio.emit('note_pressed', {'note': key_found})  # Gửi nốt nhạc về web
+                    # Chỉ phát nhạc nếu đầu ngón trỏ chạm vào và đã qua delay
+                    if key_found not in previous_pressed_keys and key_found in sounds and (
+                            current_time - last_pressed_time > delay):
+                        sounds[key_found].play()
+                        socketio.emit('note_pressed', {'note': key_found})  # Gửi nốt nhạc về web
+                        pressed_keys[key_found] = current_time
 
-                            # Cập nhật thời gian nhấn
-                            pressed_keys[key_found] = current_time
+                        # Kiểm tra nếu đúng nốt trong bài hát
+                        if current_song and current_note_index < len(current_song):
+                            if key_found == current_song[current_note_index]:
+                                current_note_index += 1
+                                socketio.emit('update_progress', {'current_index': current_note_index})
 
-                            # Kiểm tra nếu đúng nốt trong bài hát
-                            if current_song and current_note_index < len(current_song):
-                                if key_found == current_song[current_note_index]:
-                                    current_note_index += 1
-                                    socketio.emit('update_progress', {'current_index': current_note_index})
-
-                                    mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
         previous_pressed_keys = current_pressed_keys.copy()
 
         for key, points in key_zones.items():
             poly = np.array(points, np.int32).reshape((-1, 1, 2))
-            cv2.polylines(frame, [poly], isClosed=True, color=(0, 255, 0), thickness=2)
-            cv2.putText(frame, key, points[0], cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+            # Kiểm tra nếu là phím đen, tô màu ruột
+            if key in black_keys:
+                cv2.fillPoly(frame, [poly], color=(0, 0, 0))  # Tô màu đen
+                text_position = (points[0][0], points[0][1] - 20)  # Tên phím ở trên
+                cv2.putText(frame, key, text_position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            else:
+                text_position = (points[0][0], points[0][1] + 180)  # Tên phím ở dưới
+                cv2.putText(frame, key, text_position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+
+            # Vẽ viền phím
+            cv2.polylines(frame, [poly], isClosed=True, color=(0, 0, 0), thickness=2)
 
         _, buffer = cv2.imencode('.jpg', frame)
         frame_bytes = buffer.tobytes()
@@ -211,6 +239,36 @@ def set_song(song_name):
 @app.route('/video_feed')
 def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/save_score', methods=['POST'])
+def save_score():
+    data = request.get_json()
+    new_score = HighScore(
+        player_name=data['player_name'],
+        score=data['score'],
+        song_name=data['song_name']
+    )
+    db.session.add(new_score)
+    db.session.commit()
+    return jsonify({"message": "Điểm số đã được lưu!"})
+
+# Route để lấy bảng xếp hạng theo bài hát
+@app.route('/get_highscores/<song_name>', methods=['GET'])
+def get_highscores(song_name):
+    scores = HighScore.query.filter_by(song_name=song_name).order_by(HighScore.score.desc()).limit(10).all()
+    return jsonify([
+        {"player_name": score.player_name, "score": score.score}
+        for score in scores
+    ])
+
+@app.route('/get_leaderboard', methods=['GET'])
+def get_leaderboard():
+    scores = HighScore.query.order_by(HighScore.score.desc()).limit(10).all()
+    return jsonify([
+        {"player_name": score.player_name, "score": score.score}
+        for score in scores
+    ])
+
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
