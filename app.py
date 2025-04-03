@@ -3,7 +3,7 @@ import numpy as np
 import mediapipe as mp
 import pygame
 import os
-from flask import Flask, Response, render_template
+from flask import Flask, Response, render_template, g
 from flask_socketio import SocketIO, emit
 import time
 import math
@@ -90,12 +90,20 @@ def is_inside_zone(point, zone):
     poly = np.array(zone, np.int32)
     return cv2.pointPolygonTest(poly, point, False) >= 0
 
+
 current_song = None  # Danh sách nốt của bài hát hiện tại
 current_note_index = 0  # Vị trí của nốt cần nhấn tiếp theo
 pressed_keys = {}
-delay = 0.5
+delay = 1
 curl_threshold = 165
-min_distance = 120 # Ngưỡng góc để xác định ngón tay cong
+# Khoảnh cách để xác định ngón tay cong
+min_distances = {
+    "index": 120,
+    "middle": 120,
+    "ring": 120,
+    "pinky": 40,
+    "thumb": 40
+}
 
 # Hàm tính góc giữa ba điểm
 def calculate_angle(p1, p2, p3):
@@ -151,76 +159,138 @@ def generate_frames():
             for hand_landmarks in result.multi_hand_landmarks:
                 h, w, _ = frame.shape  
                 landmarks = hand_landmarks.landmark
-                
-                # Lấy tọa độ các điểm trên ngón trỏ
-                index_tip = (landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].x * w,
-                            landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].y * h)
-                index_dip = (landmarks[mp_hands.HandLandmark.INDEX_FINGER_DIP].x * w,
-                            landmarks[mp_hands.HandLandmark.INDEX_FINGER_DIP].y * h)
-                index_pip = (landmarks[mp_hands.HandLandmark.INDEX_FINGER_PIP].x * w,
-                            landmarks[mp_hands.HandLandmark.INDEX_FINGER_PIP].y * h)
-                index_mcp = (landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].x * w,
-                            landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].y * h)
 
-                # Tính góc giữa các đốt ngón trỏ
-                angle = calculate_angle(index_tip, index_dip, index_pip)
-                distance = calculate_distance(index_tip, index_mcp)
+                # Lấy tọa độ các điểm trên từng ngón tay
+                fingers = {
+                    "index": {
+                        "tip": (landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].x * w,
+                                landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].y * h),
+                        "dip": (landmarks[mp_hands.HandLandmark.INDEX_FINGER_DIP].x * w,
+                                landmarks[mp_hands.HandLandmark.INDEX_FINGER_DIP].y * h),
+                        "pip": (landmarks[mp_hands.HandLandmark.INDEX_FINGER_PIP].x * w,
+                                landmarks[mp_hands.HandLandmark.INDEX_FINGER_PIP].y * h),
+                        "mcp": (landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].x * w,
+                                landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].y * h),
+                    },
+                    "middle": {
+                        "tip": (landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_TIP].x * w,
+                                landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_TIP].y * h),
+                        "dip": (landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_DIP].x * w,
+                                landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_DIP].y * h),
+                        "pip": (landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_PIP].x * w,
+                                landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_PIP].y * h),
+                        "mcp": (landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_MCP].x * w,
+                                landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_MCP].y * h),
+                    },
+                    "ring": {
+                        "tip": (landmarks[mp_hands.HandLandmark.RING_FINGER_TIP].x * w,
+                                landmarks[mp_hands.HandLandmark.RING_FINGER_TIP].y * h),
+                        "dip": (landmarks[mp_hands.HandLandmark.RING_FINGER_DIP].x * w,
+                                landmarks[mp_hands.HandLandmark.RING_FINGER_DIP].y * h),
+                        "pip": (landmarks[mp_hands.HandLandmark.RING_FINGER_PIP].x * w,
+                                landmarks[mp_hands.HandLandmark.RING_FINGER_PIP].y * h),
+                        "mcp": (landmarks[mp_hands.HandLandmark.RING_FINGER_MCP].x * w,
+                                landmarks[mp_hands.HandLandmark.RING_FINGER_MCP].y * h),
+                    },
+                    "pinky": {
+                        "tip": (landmarks[mp_hands.HandLandmark.PINKY_TIP].x * w,
+                                landmarks[mp_hands.HandLandmark.PINKY_TIP].y * h),
+                        "dip": (landmarks[mp_hands.HandLandmark.PINKY_DIP].x * w,
+                                landmarks[mp_hands.HandLandmark.PINKY_DIP].y * h),
+                        "pip": (landmarks[mp_hands.HandLandmark.PINKY_PIP].x * w,
+                                landmarks[mp_hands.HandLandmark.PINKY_PIP].y * h),
+                        "mcp": (landmarks[mp_hands.HandLandmark.PINKY_MCP].x * w,
+                                landmarks[mp_hands.HandLandmark.PINKY_MCP].y * h),
+                    },
+                    "thumb": {
+                        "tip": (landmarks[mp_hands.HandLandmark.THUMB_TIP].x * w,
+                                landmarks[mp_hands.HandLandmark.THUMB_TIP].y * h),
+                        "mcp": (landmarks[mp_hands.HandLandmark.THUMB_CMC].x * w,
+                                landmarks[mp_hands.HandLandmark.THUMB_CMC].y * h),
+                    }
+                }
 
                 # Danh sách các phím đen (ưu tiên kiểm tra trước)
-                
-
                 key_found = None
 
-                # Chỉ kiểm tra phím với đầu ngón trỏ
-                if angle < curl_threshold or distance < min_distance:
-                    for key in black_keys:
-                        if is_inside_zone(index_tip, key_zones[key]):
-                            key_found = key
-                            break  
+                for finger_name, finger in fingers.items():
+                    # Tính góc và khoảng cách (trừ ngón cái)
+                    if finger_name != "thumb":
+                        angle = calculate_angle(finger["tip"], finger["dip"], finger["pip"])
+                        distance = calculate_distance(finger["tip"], finger["mcp"])
+                    else:
+                        # Ngón cái không có đốt DIP/PIP, chỉ kiểm tra khoảng cách từ đầu ngón đến MCP
+                        distance = calculate_distance(finger["tip"], finger["mcp"])
+                        angle = 0  # Bỏ qua tính góc
 
-                    if not key_found:
-                        for key in key_zones:
-                            if key not in black_keys and is_inside_zone(index_tip, key_zones[key]):
+                    min_distance = min_distances.get(finger_name, 120)  # Mặc định 120 cho các ngón còn lại
+
+                    # Kiểm tra xem đầu ngón tay có chạm vào phím không
+                    if angle < curl_threshold or distance < min_distance:
+                        for key in black_keys:
+                            if is_inside_zone(finger["tip"], key_zones[key]):
                                 key_found = key
                                 break  
 
-                if key_found:
-                    current_pressed_keys.add(key_found)
+                        if not key_found:
+                            for key in key_zones:
+                                if key not in black_keys and is_inside_zone(finger["tip"], key_zones[key]):
+                                    key_found = key
+                                    break  
 
-                    last_pressed_time = pressed_keys.get(key_found, 0)
-                    current_time = time.time()
+                    if key_found:
+                        current_pressed_keys.add(key_found)
 
-                    # Chỉ phát nhạc nếu đầu ngón trỏ chạm vào và đã qua delay
-                    if key_found not in previous_pressed_keys and key_found in sounds and (
-                            current_time - last_pressed_time > delay):
-                        sounds[key_found].play()
-                        socketio.emit('note_pressed', {'note': key_found})  # Gửi nốt nhạc về web
-                        pressed_keys[key_found] = current_time
+                        last_pressed_time = pressed_keys.get(key_found, 0)
+                        current_time = time.time()
 
-                        # Kiểm tra nếu đúng nốt trong bài hát
-                        if current_song and current_note_index < len(current_song):
-                            if key_found == current_song[current_note_index]:
-                                current_note_index += 1
-                                socketio.emit('update_progress', {'current_index': current_note_index})
+                        # Chỉ phát nhạc nếu đã qua delay
+                        if key_found not in previous_pressed_keys and key_found in sounds and (
+                                current_time - last_pressed_time > delay):
+                            sounds[key_found].play()
+                            socketio.emit('note_pressed', {'note': key_found})  # Gửi nốt nhạc về web
+                            pressed_keys[key_found] = current_time
 
+                            # Kiểm tra nếu đúng nốt trong bài hát
+                            if current_song and current_note_index < len(current_song):
+                                while current_note_index < len(current_song) and current_song[current_note_index] == key_found:
+                                    current_note_index += 1
+                                    socketio.emit('update_progress', {'current_index': current_note_index})
+
+                # Vẽ bàn tay
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-
         previous_pressed_keys = current_pressed_keys.copy()
+
+        # Giả sử current_song và current_note_index được cập nhật từ chế độ luyện tập
+        expected_note = None
+        if current_song and current_note_index < len(current_song):
+            expected_note = current_song[current_note_index]
 
         for key, points in key_zones.items():
             poly = np.array(points, np.int32).reshape((-1, 1, 2))
 
-            # Kiểm tra nếu là phím đen, tô màu ruột
+            # Nếu phím là phím đen
             if key in black_keys:
-                cv2.fillPoly(frame, [poly], color=(0, 0, 0))  # Tô màu đen
+                # Nếu đây là nốt cần đánh thì tô highlight (màu xanh)
+                if expected_note is not None and key == expected_note and current_mode == "practice":
+                    cv2.fillPoly(frame, [poly], color=(0, 255, 0))  # Tô màu xanh cho active key
+                    text_color = (0, 0, 0)  # Chữ đen trên nền xanh
+                else:
+                    cv2.fillPoly(frame, [poly], color=(0, 0, 0))  # Tô màu đen
+                    text_color = (255, 255, 255)
                 text_position = (points[0][0], points[0][1] - 20)  # Tên phím ở trên
-                cv2.putText(frame, key, text_position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                cv2.putText(frame, key, text_position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 2)
             else:
+                # Với phím trắng, chỉ thay đổi màu chữ nếu là nốt cần đánh
+                if expected_note is not None and  key == expected_note and current_mode == "practice":
+                    text_color = (0, 255, 0)  # Màu xanh cho active key
+                else:
+                    text_color = (0, 0, 0)
                 text_position = (points[0][0], points[0][1] + 180)  # Tên phím ở dưới
-                cv2.putText(frame, key, text_position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+                cv2.putText(frame, key, text_position, cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 2)
 
-            # Vẽ viền phím
-            cv2.polylines(frame, [poly], isClosed=True, color=(0, 0, 0), thickness=2)
+                # Vẽ viền phím
+                cv2.polylines(frame, [poly], isClosed=True, color=(0, 0, 0), thickness=2)
 
         _, buffer = cv2.imencode('.jpg', frame)
         frame_bytes = buffer.tobytes()
@@ -229,7 +299,16 @@ def generate_frames():
 
 @app.route('/')
 def index():
+    global current_mode
+    current_mode = 'competition'
     return render_template('index.html')
+
+@app.route('/practice_mode')
+def practice_mode():
+    global current_mode
+    current_mode = 'practice'
+    return render_template('practice.html')
+
 
 @app.route('/set_song/<song_name>')
 def set_song(song_name):

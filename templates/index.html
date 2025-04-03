@@ -40,21 +40,24 @@
 </head>
 
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="#">Piano</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <!-- <a class="nav-link" href="#" onclick="showLeaderboard()">Bảng xếp hạng</a> -->
-                    </li>
-                </ul>
-            </div>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">Piano Mode</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link active" href="/">🏆 Thi đấu</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/practice_mode">🎵 Luyện tập</a>
+                </li>
+            </ul>
         </div>
-    </nav>
+    </div>
+  </nav>
     <div class="container mt-4">
         <div class="row">
             <div class="col-md-6">
@@ -72,7 +75,7 @@
         
                 <h2>🎼 Bài hát hiện tại</h2>
                 <p id="song_notes" class="alert alert-info">Chưa chọn bài</p>
-                <!-- <h2>🏆 Điểm số: <span id="score">0</span></h2> -->
+                <h2>🏆 Điểm số: <span id="score">---</span></h2>
                 <h2>🎹 Nốt đang nhấn:</h2>
                 <p id="current_note" class="alert alert-warning">---</p>
             </div>
@@ -113,113 +116,114 @@
 
     <script>
         var socket = io.connect("http://" + document.domain + ":" + location.port);
-        var currentIndex = 0; // Chỉ số của nốt hiện tại
+            var currentIndex = 0; // Chỉ số của nốt hiện tại
+            var score = 100; // Bắt đầu với 100 điểm
 
-        function confirmSong() {
-            var songName = $("#songSelector").val();
-            if (songName) {
-                fetch('/set_song/' + songName)
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log("Bài hát đã chọn:", data.song);
-                        currentIndex = 0; // Reset về nốt đầu tiên
-                    });
-            } else {
-                alert("Vui lòng chọn một bài hát!");
+            // Khi chọn bài hát, reset lại currentIndex
+            function confirmSong() {
+                var songName = $("#songSelector").val();
+                if (songName) {
+                    fetch('/set_song/' + songName)
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log("Bài hát đã chọn:", data.song);
+                            currentIndex = 0; // Reset về nốt đầu tiên
+                            score = 100; // Reset điểm số về 100
+                            $("#score").text(score); // Cập nhật điểm trên giao diện
+                        });
+                } else {
+                    alert("Vui lòng chọn một bài hát!");
+                }
             }
-        }
 
-        socket.on('update_song', function (data) {
-            let notesHtml = data.notes.map((note, index) =>
-                `<span class="song-note ${index === 0 ? 'highlight' : ''}">${note}</span>`).join(" ");
-            $("#song_notes").html(`${notesHtml}`);
-            currentIndex = 0; // Bắt đầu từ nốt đầu tiên
-        });
-
-        socket.on('note_pressed', function (data) {
-                document.getElementById('current_note').innerText = "" + data.note;
+            socket.on('update_song', function (data) {
+                let notesHtml = data.notes.map((note, index) =>
+                    `<span class="song-note ${index === 0 ? 'highlight' : ''}">${note}</span>`).join(" ");
+                $("#song_notes").html(`${notesHtml}`);
+                currentIndex = 0; // Bắt đầu từ nốt đầu tiên
             });
 
-        socket.on('note_pressed', function (data) {
-            let notes = $(".song-note");
-            let currentNote = notes.eq(currentIndex).text();
-
-            // Kiểm tra nếu nốt được nhấn là nốt đúng
-            if (data.note === currentNote) {
-                notes.eq(currentIndex).removeClass("highlight").addClass("text-success"); // Đánh dấu đã nhấn thành công
-                currentIndex++;
-
-                if (currentIndex < notes.length) {
-                    notes.eq(currentIndex).addClass("highlight"); // Highlight nốt tiếp theo
-                }
-
-                if (currentIndex >= notes.length) {
-                    endGame(); // Lưu điểm
-                }
-
-            }
-        });
-        var score = 0; // Biến lưu điểm số
-
+            let noteInProgress = false;  // Cờ để kiểm tra nốt có đang được xử lý không
             socket.on('note_pressed', function (data) {
                 let notes = $(".song-note");
                 let currentNote = notes.eq(currentIndex).text();
 
+                console.log(`🎯 Nốt đúng: ${data.note}`);
+                console.log(`Chỉ số: ${currentIndex}`);
+
+                // Kiểm tra nếu nốt nhấn là nốt đúng
                 if (data.note === currentNote) {
-                    notes.eq(currentIndex).removeClass("highlight").addClass("text-success"); // Đánh dấu đúng
-                    score += 10; // Cộng điểm
-                    currentIndex++;
+                    // Kiểm tra nhiều nốt giống nhau liên tiếp
+                    while (currentIndex < notes.length && notes.eq(currentIndex).text() === data.note) {
+                        console.log(`Xử lý nốt: ${notes.eq(currentIndex).text()} tại chỉ số ${currentIndex}`);
+
+                        // Đánh dấu nốt là đúng
+                        notes.eq(currentIndex).removeClass("highlight").addClass("text-success");
+                        currentIndex++;  // Tăng chỉ số nốt
+
+                        // Kiểm tra nếu đã hoàn thành tất cả các nốt giống nhau
+                        if (currentIndex < notes.length) {
+                            console.log(`Đang xử lý nốt tiếp theo: ${notes.eq(currentIndex).text()}`);
+                        }
+                    }
+
+                    // Sau khi xử lý các nốt giống nhau, nếu còn nốt, đánh dấu nốt tiếp theo
                     if (currentIndex < notes.length) {
-                        notes.eq(currentIndex).addClass("highlight"); // Highlight nốt tiếp theo
+                        notes.eq(currentIndex).addClass("highlight");
+                    } else {
+                        endGame(); // Nếu hết nốt, kết thúc trò chơi
                     }
                 } else {
-                    score -= 5; // Trừ điểm khi sai
+                    console.log(`❌ Nốt sai: ${data.note} (mong đợi: ${currentNote})`);
                 }
 
-                // Cập nhật điểm số trên giao diện
+                // Cập nhật điểm số
                 $("#score").text(score);
             });
+
+            // Khi hoàn thành bài hát, lưu điểm
             function saveScore(playerName, score) {
-                    let songName = $("#songSelector").val(); // Lấy bài hát hiện tại
-                    fetch('/save_score', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ player_name: playerName, score: score, song_name: songName })
-                    })
-                        .then(response => response.json())
-                        .then(data => alert(data.message))
-                        .catch(error => console.error("Lỗi:", error));
-                }
+                let songName = $("#songSelector").val(); // Lấy bài hát hiện tại
+                fetch('/save_score', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ player_name: playerName, score: score, song_name: songName })
+                })
+                    .then(response => response.json())
+                    .then(data => alert(data.message))
+                    .catch(error => console.error("Lỗi:", error));
+            }
 
-                // Khi hoàn thành bài hát, lưu điểm
-                function endGame() {
-                    let playerName = prompt("Nhập tên của bạn:");
-                    if (playerName) {
-                        saveScore(playerName, score);
-                    }
+            // Khi kết thúc game
+            function endGame() {
+                let playerName = prompt("Nhập tên của bạn:");
+                if (playerName) {
+                    saveScore(playerName, score);
                 }
-                // Gửi yêu cầu lấy bảng xếp hạng
-                    function showLeaderboard() {
-                        fetch('/get_leaderboard')
-                            .then(response => response.json())
-                            .then(data => {
-                                let leaderboardBody = document.getElementById('leaderboardBody');
-                                leaderboardBody.innerHTML = ""; // Xóa dữ liệu cũ
+            }
 
-                                data.forEach((record, index) => {
-                                    let row = `<tr>
+            // Hiển thị bảng xếp hạng
+            function showLeaderboard() {
+                fetch('/get_leaderboard')
+                    .then(response => response.json())
+                    .then(data => {
+                        let leaderboardBody = document.getElementById('leaderboardBody');
+                        leaderboardBody.innerHTML = ""; // Xóa dữ liệu cũ
+
+                        data.forEach((record, index) => {
+                            let row = `<tr>
                     <td>${index + 1}</td>
                     <td>${record.player_name}</td>
                     <td>${record.score}</td>
                 </tr>`;
-                                    leaderboardBody.innerHTML += row;
-                                });
+                            leaderboardBody.innerHTML += row;
+                        });
 
-                                // Hiển thị modal
-                                new bootstrap.Modal(document.getElementById('leaderboardModal')).show();
-                            })
-                            .catch(error => console.error("Lỗi khi lấy bảng xếp hạng:", error));
-                    }
+                        // Hiển thị modal
+                        new bootstrap.Modal(document.getElementById('leaderboardModal')).show();
+                    })
+                    .catch(error => console.error("Lỗi khi lấy bảng xếp hạng:", error));
+            }
     </script>
 </body>
 

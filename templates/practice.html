@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Piano Practice Mode</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        .highlight {
+            background-color: yellow;
+            font-weight: bold;
+            padding: 5px;
+            border-radius: 5px;
+            transition: background-color 0.3s ease-in-out;
+        }
+
+        #current_note {
+            font-size: 32px;
+            font-weight: bold;
+            text-align: center;
+            color: white;
+            background-color: gray;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        #song_notes {
+            font-size: 32px;
+            font-weight: bold;
+            text-align: center;
+            color: rgb(0, 157, 255);
+            background-color: lightblue;
+            padding: 15px;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 🔹 Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Piano Mode</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link " href="/">🏆 Thi đấu</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/practice_mode">🎵 Luyện tập</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <!-- Cột chọn bài và thông tin bài tập -->
+            <div class="col-md-6">
+                <h2>🎵 Chọn bài tập</h2>
+                <div class="input-group mb-3">
+                    <select id="songSelector" class="form-select">
+                        <option value="" disabled selected>Chọn bài tập...</option>
+                        <option value="Happy Birthday">Happy Birthday</option>
+                        <option value="Twinkle Twinkle">Twinkle Twinkle</option>
+                        <option value="Đàn gà con">Đàn gà con</option>
+                        <option value="Kìa con bướm vàng">Kìa con bướm vàng</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="confirmSong()">Chọn</button>
+                </div>
+
+                <h2>🎼 Bài tập hiện tại</h2>
+                <p id="song_notes" class="alert alert-info">Chưa chọn bài</p>
+                <h2>🎹 Nốt cần đánh</h2>
+                <p id="current_note" class="alert alert-warning">---</p>
+            </div>
+
+            <!-- Cột hiển thị camera -->
+            <div class="col-md-6 text-center">
+                <img src="{{ url_for('video_feed') }}" class="img-fluid border rounded" width="640" height="480">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var socket = io.connect("http://" + document.domain + ":" + location.port);
+        var currentIndex = 0; // Chỉ số của nốt hiện tại trong bài tập
+
+        function confirmSong() {
+            var songName = $("#songSelector").val();
+            if (songName) {
+                fetch('/set_song/' + songName)
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log("Bài tập đã chọn:", data.song);
+                        currentIndex = 0; // Reset về nốt đầu tiên
+                    });
+            } else {
+                alert("Vui lòng chọn một bài tập!");
+            }
+        }
+
+        // Cập nhật bài tập khi có dữ liệu từ server
+        socket.on('update_song', function (data) {
+            let notesHtml = data.notes.map((note, index) =>
+                `<span class="song-note ${index === 0 ? 'highlight' : ''}">${note}</span>`).join(" ");
+            $("#song_notes").html(notesHtml);
+            currentIndex = 0;
+        });
+
+        // Khi nhận được nốt được nhấn, cập nhật nốt hiện tại (để hiển thị trên giao diện)
+        socket.on('note_pressed', function (data) {
+            document.getElementById('current_note').innerText = data.note;
+
+            // Trong chế độ luyện tập, bạn có thể không cần so sánh đúng/sai, chỉ cần highlight nốt hiện tại đã nhận
+            let notes = $(".song-note");
+            if (currentIndex < notes.length) {
+                // Xóa highlight cũ
+                notes.removeClass("highlight");
+                // Highlight nốt hiện tại của bài tập (theo thứ tự)
+                notes.eq(currentIndex).addClass("highlight");
+                currentIndex++;
+                // Nếu hết bài, reset lại (hoặc thực hiện hành động khác)
+                if (currentIndex >= notes.length) {
+                    currentIndex = 0;
+                }
+            }
+        });
+        
+    </script>
+</body>
+
+</html>
