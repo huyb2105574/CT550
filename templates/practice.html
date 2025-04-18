@@ -37,24 +37,42 @@
             padding: 15px;
             border-radius: 8px;
         }
+
+        .navbar {
+            text-align: center;
+        }
+
+        .navbar-brand {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .navbar-nav .nav-link {
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .navbar-nav .nav-link.active {
+            color: blue !important;
+            font-weight: bold;
+        }
+
     </style>
 </head>
 
 <body>
-    <!-- 🔹 Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="#">Piano Mode</a>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light py-3">
+        <div class="container">
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+            <div class="collapse navbar-collapse justify-content-center" id="navbarNav">
+                <ul class="navbar-nav">
                     <li class="nav-item">
-                        <a class="nav-link " href="/">🏆 Thi đấu</a>
+                        <a class="nav-link fs-4 text-dark" href="/">🏆 Thi đấu</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link active" href="/practice_mode">🎵 Luyện tập</a>
+                        <a class="nav-link active fs-4 text-primary" href="/practice_mode">🎵 Luyện tập</a>
                     </li>
                 </ul>
             </div>
@@ -79,7 +97,7 @@
 
                 <h2>🎼 Bài tập hiện tại</h2>
                 <p id="song_notes" class="alert alert-info">Chưa chọn bài</p>
-                <h2>🎹 Nốt cần đánh</h2>
+                <h2>🎹 Nốt hiện tại</h2>
                 <p id="current_note" class="alert alert-warning">---</p>
             </div>
 
@@ -89,6 +107,24 @@
             </div>
         </div>
     </div>
+    <!-- Modal hoàn thành bài tập -->
+    <div class="modal fade" id="practiceCompleteModal" tabindex="-1" aria-labelledby="practiceCompleteLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered text-center">
+            <div class="modal-content p-4">
+                <h3 class="mb-3 text-success">✅ Hoàn thành bài tập</h3>
+                <div class="mb-3">
+                    <svg width="80" height="80" viewBox="0 0 16 16" class="bi bi-check-circle-fill text-success"
+                        fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM6.97 11.03a.75.75 0 0 0 1.07 0l4.243-4.243a.75.75 0 1 0-1.06-1.06L7.5 9.44 5.78 7.72a.75.75 0 0 0-1.06 1.06l2.25 2.25z" />
+                    </svg>
+                </div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+
 
     <script>
         var socket = io.connect("http://" + document.domain + ":" + location.port);
@@ -113,27 +149,49 @@
             let notesHtml = data.notes.map((note, index) =>
                 `<span class="song-note ${index === 0 ? 'highlight' : ''}">${note}</span>`).join(" ");
             $("#song_notes").html(notesHtml);
-            currentIndex = 0;
+            currentIndex = 1;
         });
 
         // Khi nhận được nốt được nhấn, cập nhật nốt hiện tại (để hiển thị trên giao diện)
         socket.on('note_pressed', function (data) {
-            document.getElementById('current_note').innerText = data.note;
+                document.getElementById('current_note').innerText = data.note;
 
-            // Trong chế độ luyện tập, bạn có thể không cần so sánh đúng/sai, chỉ cần highlight nốt hiện tại đã nhận
-            let notes = $(".song-note");
-            if (currentIndex < notes.length) {
-                // Xóa highlight cũ
-                notes.removeClass("highlight");
-                // Highlight nốt hiện tại của bài tập (theo thứ tự)
-                notes.eq(currentIndex).addClass("highlight");
-                currentIndex++;
-                // Nếu hết bài, reset lại (hoặc thực hiện hành động khác)
-                if (currentIndex >= notes.length) {
-                    currentIndex = 0;
+                let notes = $(".song-note");
+                console.log("currentIndex:", currentIndex, "/", "notes.length:", notes.length); // 👈 Log kiểm tra
+
+                if (currentIndex < notes.length) {
+                    const expectedNote = notes.eq(currentIndex).text(); // Nốt cần đánh
+
+                    if (data.note === expectedNote) {
+                        // Đúng nốt
+                        notes.removeClass("highlight");
+                        notes.eq(currentIndex + 1).addClass("highlight");
+                        currentIndex++;
+                    } 
+                    else {
+                        // Sai nốt - Có thể thêm hiệu ứng hoặc thông báo nhỏ
+                        console.log("Sai nốt! Cần đánh:", expectedNote, "Nhưng nhấn:", data.note);
+                    }
                 }
+                if (currentIndex>= notes.length) {
+                    showPracticeCompleteModal(); // Hiện modal khi hoàn thành
+                }
+                
+            });
+
+        function showPracticeCompleteModal() {
+                const modal = new bootstrap.Modal(document.getElementById('practiceCompleteModal'));
+                modal.show();
             }
-        });
+
+            // Gắn sự kiện chỉ 1 lần khi trang được load
+            document.addEventListener('DOMContentLoaded', function () {
+                const modalElement = document.getElementById('practiceCompleteModal');
+                modalElement.addEventListener('hidden.bs.modal', function () {
+                    location.reload(); // Reload trang sau khi đóng modal
+                });
+            });
+
         
     </script>
 </body>

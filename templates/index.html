@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Piano Gesture Recognition</title>
+    <title>Piano Game Mode</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -36,28 +36,45 @@
             padding: 15px; /* Tăng khoảng cách bên trong */
             border-radius: 8px; /* Bo góc */
         }
+        .navbar {
+            text-align: center;
+        }
+
+        .navbar-brand {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .navbar-nav .nav-link {
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .navbar-nav .nav-link.active {
+            color: blue !important;
+            font-weight: bold;
+        }
     </style>
 </head>
 
 <body>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="#">Piano Mode</a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav ms-auto">
-                <li class="nav-item">
-                    <a class="nav-link active" href="/">🏆 Thi đấu</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="/practice_mode">🎵 Luyện tập</a>
-                </li>
-            </ul>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light py-3">
+        <div class="container">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse justify-content-center" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link active fs-4 text-primary" href="/">🏆 Thi đấu</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fs-4 text-dark" href="/practice_mode">🎵 Luyện tập</a>
+                    </li>
+                </ul>
+            </div>
         </div>
-    </div>
-  </nav>
+    </nav>
     <div class="container mt-4">
         <div class="row">
             <div class="col-md-6">
@@ -112,12 +129,28 @@
             </div>
         </div>
     </div>
-
+    <!-- Modal thông báo hoàn thành -->
+    <div class="modal fade" id="completionModal" tabindex="-1" aria-labelledby="completionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content text-center p-4">
+                <h3 class="text-success mb-3">🎉 Hoàn thành bài hát!</h3>
+                <div class="mb-3">
+                    <svg width="80" height="80" viewBox="0 0 16 16" class="bi bi-check-circle-fill text-success" fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM6.97 11.03a.75.75 0 0 0 1.07 0l4.243-4.243a.75.75 0 1 0-1.06-1.06L7.5 9.44 5.78 7.72a.75.75 0 0 0-1.06 1.06l2.25 2.25z" />
+                    </svg>
+                </div>
+                <h2 class="mb-3 display-4 text-dark fw-bold"><span id="finalScore">---</span></h2>
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         var socket = io.connect("http://" + document.domain + ":" + location.port);
             var currentIndex = 0; // Chỉ số của nốt hiện tại
-            var score = 100; // Bắt đầu với 100 điểm
+            var score = "---";
 
             // Khi chọn bài hát, reset lại currentIndex
             function confirmSong() {
@@ -143,43 +176,36 @@
                 currentIndex = 0; // Bắt đầu từ nốt đầu tiên
             });
 
-            let noteInProgress = false;  // Cờ để kiểm tra nốt có đang được xử lý không
             socket.on('note_pressed', function (data) {
-                let notes = $(".song-note");
-                let currentNote = notes.eq(currentIndex).text();
+                    let notes = $(".song-note");
+                    let currentNote = notes.eq(currentIndex).text();
+                    $("#current_note").text(data.note);
+                    console.log(`🎯 Nốt đúng: ${data.note}`);
+                    console.log(`Chỉ số: ${currentIndex}`);
 
-                console.log(`🎯 Nốt đúng: ${data.note}`);
-                console.log(`Chỉ số: ${currentIndex}`);
-
-                // Kiểm tra nếu nốt nhấn là nốt đúng
-                if (data.note === currentNote) {
-                    // Kiểm tra nhiều nốt giống nhau liên tiếp
-                    while (currentIndex < notes.length && notes.eq(currentIndex).text() === data.note) {
-                        console.log(`Xử lý nốt: ${notes.eq(currentIndex).text()} tại chỉ số ${currentIndex}`);
-
+                    // Kiểm tra nếu nốt nhấn là nốt đúng
+                    if (data.note === currentNote) {
                         // Đánh dấu nốt là đúng
                         notes.eq(currentIndex).removeClass("highlight").addClass("text-success");
                         currentIndex++;  // Tăng chỉ số nốt
 
-                        // Kiểm tra nếu đã hoàn thành tất cả các nốt giống nhau
+                        // Kiểm tra nếu còn nốt để xử lý
                         if (currentIndex < notes.length) {
-                            console.log(`Đang xử lý nốt tiếp theo: ${notes.eq(currentIndex).text()}`);
+                            // Highlight nốt tiếp theo
+                            notes.eq(currentIndex).addClass("highlight");
+                        } else {
+                            // Nếu hết bài, kết thúc trò chơi
+                            endGame();
                         }
-                    }
 
-                    // Sau khi xử lý các nốt giống nhau, nếu còn nốt, đánh dấu nốt tiếp theo
-                    if (currentIndex < notes.length) {
-                        notes.eq(currentIndex).addClass("highlight");
+                        // Cập nhật điểm số
+                        $("#score").text(score);
                     } else {
-                        endGame(); // Nếu hết nốt, kết thúc trò chơi
+                        console.log(`❌ Nốt sai: ${data.note} (mong đợi: ${currentNote})`);
+                        score = score - 5;
+                        $("#score").text(score);
                     }
-                } else {
-                    console.log(`❌ Nốt sai: ${data.note} (mong đợi: ${currentNote})`);
-                }
-
-                // Cập nhật điểm số
-                $("#score").text(score);
-            });
+                });
 
             // Khi hoàn thành bài hát, lưu điểm
             function saveScore(playerName, score) {
@@ -196,11 +222,23 @@
 
             // Khi kết thúc game
             function endGame() {
-                let playerName = prompt("Nhập tên của bạn:");
-                if (playerName) {
-                    saveScore(playerName, score);
-                }
+                // let playerName = prompt("Nhập tên của bạn:");
+                // if (playerName) {
+                //     saveScore(playerName, score);
+                // }
+                // Hiện modal thông báo hoàn thành
+                showCompletionModal(score);
+
             }
+
+            function showCompletionModal(score) {
+                    $("#finalScore").text(score);
+                    new bootstrap.Modal(document.getElementById('completionModal')).show();
+                    document.getElementById('completionModal').addEventListener('hidden.bs.modal', function () {
+                    location.reload();
+                });
+                }
+
 
             // Hiển thị bảng xếp hạng
             function showLeaderboard() {

@@ -99,10 +99,10 @@ curl_threshold = 165
 # Khoảnh cách để xác định ngón tay cong
 min_distances = {
     "index": 120,
-    "middle": 120,
+    "middle": 125,
     "ring": 120,
-    "pinky": 40,
-    "thumb": 40
+    "pinky": 90,
+    "thumb": 30
 }
 
 # Hàm tính góc giữa ba điểm
@@ -154,9 +154,13 @@ def generate_frames():
         result = hands.process(frame_rgb)
 
         current_pressed_keys = set()
+        
+        finger_loop_count = 0
+        note_matched_count = 0
 
         if result.multi_hand_landmarks:
             for hand_landmarks in result.multi_hand_landmarks:
+
                 h, w, _ = frame.shape  
                 landmarks = hand_landmarks.landmark
 
@@ -213,6 +217,7 @@ def generate_frames():
                 # Danh sách các phím đen (ưu tiên kiểm tra trước)
                 key_found = None
 
+                # Cập nhật previous_pressed_keys sau khi xử lý xong tất cả ngón tay
                 for finger_name, finger in fingers.items():
                     # Tính góc và khoảng cách (trừ ngón cái)
                     if finger_name != "thumb":
@@ -238,24 +243,34 @@ def generate_frames():
                                     key_found = key
                                     break  
 
-                    if key_found:
+                    if key_found and key_found not in previous_pressed_keys:
+                        note_matched_count += 1
                         current_pressed_keys.add(key_found)
 
                         last_pressed_time = pressed_keys.get(key_found, 0)
                         current_time = time.time()
 
-                        # Chỉ phát nhạc nếu đã qua delay
-                        if key_found not in previous_pressed_keys and key_found in sounds and (
-                                current_time - last_pressed_time > delay):
+                        if current_time - last_pressed_time > delay:
                             sounds[key_found].play()
-                            socketio.emit('note_pressed', {'note': key_found})  # Gửi nốt nhạc về web
+                            socketio.emit('note_pressed', {'note': key_found})
                             pressed_keys[key_found] = current_time
 
-                            # Kiểm tra nếu đúng nốt trong bài hát
+                            # Chỉ kiểm tra đúng nốt tiếp theo trong bài hát, và chỉ 1 lần duy nhất
                             if current_song and current_note_index < len(current_song):
-                                while current_note_index < len(current_song) and current_song[current_note_index] == key_found:
-                                    current_note_index += 1
+                                expected_note = current_song[current_note_index]
+                                if key_found == expected_note:
+                                    print(f"Nốt cần đánh: {expected_note}")
+                                    print(f"Số trước: {current_note_index}")
                                     socketio.emit('update_progress', {'current_index': current_note_index})
+                                    current_note_index += 1
+                                    print(f"Đang kiểm tra nốt: {expected_note}, Chỉ số hiện tại: {current_note_index}")
+                                    print(f"Số sau: {current_note_index}")
+    
+
+                # Cập nhật previous_pressed_keys sau khi duyệt hết các ngón tay
+                previous_pressed_keys = current_pressed_keys.copy()
+
+
 
                 # Vẽ bàn tay
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)

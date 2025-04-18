@@ -2,71 +2,59 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import math
-import time
 
-# Khởi tạo MediaPipe Hands
+def calculate_angle(p1, p2, p3):
+    a = np.array(p1)
+    b = np.array(p2)
+    c = np.array(p3)
+
+    ba = a - b
+    bc = c - b
+
+    cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+    angle = np.arccos(np.clip(cosine_angle, -1.0, 1.0))
+    return np.degrees(angle)
+
+# Khởi tạo mediapipe
 mp_hands = mp.solutions.hands
-mp_draw = mp.solutions.drawing_utils
+mp_drawing = mp.solutions.drawing_utils
 hands = mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
-# Biến lưu trữ độ dài ngón tay trước đó
-prev_length = None
-press_threshold = 20  # Ngưỡng giảm để xác định nhấn
-
-# Hàm tính khoảng cách Euclid giữa hai điểm
-def euclidean_distance(p1, p2):
-    return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
-
-# Mở camera
 cap = cv2.VideoCapture(0)
 
 while cap.isOpened():
-    success, frame = cap.read()
-    if not success:
+    ret, frame = cap.read()
+    if not ret:
         break
 
-    # Lật ngược ảnh để giống gương
-    frame = cv2.flip(frame, 1)
-    h, w, c = frame.shape
-    
-    # Chuyển ảnh về RGB
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = hands.process(frame_rgb)
+    # Không lật ảnh
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    image_height, image_width, _ = frame.shape
+    result = hands.process(rgb_frame)
 
-    if results.multi_hand_landmarks:
-        for hand_landmarks in results.multi_hand_landmarks:
-            # Vẽ landmark bàn tay
-            mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+    if result.multi_hand_landmarks:
+        for hand_landmarks in result.multi_hand_landmarks:
+            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-            # Lấy tọa độ các điểm landmark của ngón trỏ
-            landmarks = hand_landmarks.landmark
-            index_tip = (landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].x * w,
-                         landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].y * h)
-            index_mcp = (landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].x * w,
-                         landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].y * h)
+            # Lấy tọa độ TIP, PIP, MCP của ngón trỏ
+            tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+            pip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_PIP]
+            mcp = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_MCP]
 
-            # Tính độ dài ngón trỏ
-            finger_length = euclidean_distance(index_tip, index_mcp)
+            # Chuyển sang pixel
+            p1 = (int(tip.x * image_width), int(tip.y * image_height))
+            p2 = (int(pip.x * image_width), int(pip.y * image_height))
+            p3 = (int(mcp.x * image_width), int(mcp.y * image_height))
 
-            # Kiểm tra nếu độ dài giảm đột ngột
-            if prev_length is not None and prev_length - finger_length > press_threshold:
-                print("🟢 Đã nhấn!")
-                cv2.putText(frame, "Pressed!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
+            angle = calculate_angle(p1, p2, p3)
 
-                # Phát âm thanh khi nhấn
-                import winsound
-                winsound.Beep(1000, 200)
+            # Vẽ và hiển thị độ cong
+            cv2.putText(frame, f"Index Angle: {int(angle)} deg", (p2[0] + 10, p2[1] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
 
-            # Cập nhật giá trị trước đó
-            prev_length = finger_length
-
-    # Hiển thị kết quả
-    cv2.imshow("Finger Press Detection", frame)
-
-    # Thoát khi nhấn 'q'
+    cv2.imshow("Index Finger Curvature", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Giải phóng tài nguyên
 cap.release()
 cv2.destroyAllWindows()
