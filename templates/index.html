@@ -207,18 +207,7 @@
                     }
                 });
 
-            // Khi hoàn thành bài hát, lưu điểm
-            function saveScore(playerName, score) {
-                let songName = $("#songSelector").val(); // Lấy bài hát hiện tại
-                fetch('/save_score', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ player_name: playerName, score: score, song_name: songName })
-                })
-                    .then(response => response.json())
-                    .then(data => alert(data.message))
-                    .catch(error => console.error("Lỗi:", error));
-            }
+         
 
             // Khi kết thúc game
             function endGame() {
@@ -240,28 +229,7 @@
                 }
 
 
-            // Hiển thị bảng xếp hạng
-            function showLeaderboard() {
-                fetch('/get_leaderboard')
-                    .then(response => response.json())
-                    .then(data => {
-                        let leaderboardBody = document.getElementById('leaderboardBody');
-                        leaderboardBody.innerHTML = ""; // Xóa dữ liệu cũ
-
-                        data.forEach((record, index) => {
-                            let row = `<tr>
-                    <td>${index + 1}</td>
-                    <td>${record.player_name}</td>
-                    <td>${record.score}</td>
-                </tr>`;
-                            leaderboardBody.innerHTML += row;
-                        });
-
-                        // Hiển thị modal
-                        new bootstrap.Modal(document.getElementById('leaderboardModal')).show();
-                    })
-                    .catch(error => console.error("Lỗi khi lấy bảng xếp hạng:", error));
-            }
+        
     </script>
 </body>
 

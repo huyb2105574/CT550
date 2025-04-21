@@ -8,28 +8,11 @@ from flask_socketio import SocketIO, emit
 import time
 import math
 from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
 
-db = SQLAlchemy()
 
-def create_app():
-    app = Flask(__name__)
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///highscores.db'
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    db.init_app(app)
-    with app.app_context():
-        db.create_all()
-    return app
 
-app = create_app()
+app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
-
-class HighScore(db.Model):
-    __tablename__ = "high_score"
-    id = db.Column(db.Integer, primary_key=True)
-    player_name = db.Column(db.String(100), nullable=False)
-    score = db.Column(db.Integer, nullable=False)
-    song_name = db.Column(db.String(100), nullable=False)
 
 # Khởi tạo pygame để phát âm thanh
 pygame.init()
@@ -334,34 +317,6 @@ def set_song(song_name):
 def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route('/save_score', methods=['POST'])
-def save_score():
-    data = request.get_json()
-    new_score = HighScore(
-        player_name=data['player_name'],
-        score=data['score'],
-        song_name=data['song_name']
-    )
-    db.session.add(new_score)
-    db.session.commit()
-    return jsonify({"message": "Điểm số đã được lưu!"})
-
-# Route để lấy bảng xếp hạng theo bài hát
-@app.route('/get_highscores/<song_name>', methods=['GET'])
-def get_highscores(song_name):
-    scores = HighScore.query.filter_by(song_name=song_name).order_by(HighScore.score.desc()).limit(10).all()
-    return jsonify([
-        {"player_name": score.player_name, "score": score.score}
-        for score in scores
-    ])
-
-@app.route('/get_leaderboard', methods=['GET'])
-def get_leaderboard():
-    scores = HighScore.query.order_by(HighScore.score.desc()).limit(10).all()
-    return jsonify([
-        {"player_name": score.player_name, "score": score.score}
-        for score in scores
-    ])
 
 
 if __name__ == '__main__':

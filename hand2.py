@@ -47,7 +47,14 @@ while cap.isOpened():
             p3 = (int(mcp.x * image_width), int(mcp.y * image_height))
 
             angle = calculate_angle(p1, p2, p3)
+            # Vẽ hai đoạn tạo thành góc
+            cv2.line(frame, p2, p1, (0, 255, 0), 4)  # PIP -> TIP (xanh lá)
+            cv2.line(frame, p2, p3, (0, 0, 255), 4)  # PIP -> MCP (đỏ)
 
+            # Vẽ điểm ở các khớp để dễ nhìn
+            cv2.circle(frame, p1, 6, (0, 255, 0), -1)  # TIP
+            cv2.circle(frame, p2, 6, (0, 255, 255), -1)  # PIP
+            cv2.circle(frame, p3, 6, (0, 0, 255), -1)  # MCP
             # Vẽ và hiển thị độ cong
             cv2.putText(frame, f"Index Angle: {int(angle)} deg", (p2[0] + 10, p2[1] - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)

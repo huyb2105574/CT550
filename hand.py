@@ -6,8 +6,8 @@ mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 hands = mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
-def calculate_finger_length(landmarks, finger_indices, image_width, image_height):
-    """Tính độ dài ngón tay theo đơn vị pixel."""
+def calculate_finger_length(landmarks, finger_indices, image_width, image_height, frame=None, color=(0, 255, 255)):
+    """Tính độ dài ngón tay theo đơn vị pixel và tô màu đoạn đo."""
     length = 0
     for i in range(len(finger_indices) - 1):
         # Chuyển đổi tọa độ chuẩn hóa về pixel
@@ -16,6 +16,10 @@ def calculate_finger_length(landmarks, finger_indices, image_width, image_height
         
         # Tính khoảng cách Euclidean
         length += np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        
+        # Vẽ đoạn nối nếu frame được truyền vào
+        if frame is not None:
+            cv2.line(frame, (x1, y1), (x2, y2), color, 4)
     return length
 
 INDEX_FINGER = [5, 6, 7, 8]  # Chỉ số của ngón trỏ
@@ -38,7 +42,7 @@ while cap.isOpened():
             mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
             # Đo độ dài ngón trỏ theo pixel
-            length_px = calculate_finger_length(hand_landmarks.landmark, INDEX_FINGER, image_width, image_height)
+            length_px = calculate_finger_length(hand_landmarks.landmark, INDEX_FINGER, image_width, image_height, frame, color=(0, 255, 0))
             cv2.putText(frame, f"Index_finger: {length_px:.2f} px", (50, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
 
