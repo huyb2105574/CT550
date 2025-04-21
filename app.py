@@ -8,10 +8,12 @@ from flask_socketio import SocketIO, emit
 import time
 import math
 from flask import Flask, request, jsonify
+from highscore import save_score, get_top_scores, init_db
 
 
 
 app = Flask(__name__)
+init_db()
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Khởi tạo pygame để phát âm thanh
@@ -67,7 +69,7 @@ key_zones = {
 }
 
 # Mở camera
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(1)
 
 def is_inside_zone(point, zone):
     poly = np.array(zone, np.int32)
@@ -85,7 +87,7 @@ min_distances = {
     "middle": 125,
     "ring": 120,
     "pinky": 90,
-    "thumb": 30
+    "thumb": 80
 }
 
 # Hàm tính góc giữa ba điểm
@@ -317,7 +319,20 @@ def set_song(song_name):
 def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route("/save_score", methods=["POST"])
+def save_score_route():
+    data = request.get_json()
+    name = data.get("name")
+    score = data.get("score")
+    if name and isinstance(score, int):
+        save_score(name, score)
+        return jsonify({"success": True})
+    return jsonify({"success": False, "message": "Invalid data"})
 
+@app.route("/get_leaderboard", methods=["GET"])
+def get_leaderboard():
+    scores = get_top_scores()
+    return jsonify(scores)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)

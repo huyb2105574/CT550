@@ -78,6 +78,7 @@
     <div class="container mt-4">
         <div class="row">
             <div class="col-md-6">
+                <button class="btn btn-outline-success mt-3" onclick="showLeaderboard()">🏅 Xem bảng xếp hạng</button>
                 <h2>🎵 Chọn bài hát</h2>
                 <div class="input-group mb-3">
                     <select id="songSelector" class="form-select">
@@ -99,6 +100,7 @@
         
             <!-- Cột 2: Hiển thị Camera -->
             <div class="col-md-6 text-center full-height">
+                <br>
                 <img src="{{ url_for('video_feed') }}" class="img-fluid border rounded" width="640" height="480">
             </div>
         </div>
@@ -211,14 +213,43 @@
 
             // Khi kết thúc game
             function endGame() {
-                // let playerName = prompt("Nhập tên của bạn:");
-                // if (playerName) {
-                //     saveScore(playerName, score);
-                // }
-                // Hiện modal thông báo hoàn thành
-                showCompletionModal(score);
+                    let playerName = prompt("🎤 Nhập tên của bạn:");
+                    if (playerName) {
+                        fetch("/save_score", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({ name: playerName, score: score })
+                        })
+                            .then(res => res.json())
+                            .then(data => {
+                                console.log("Điểm đã lưu:", data);
+                                showCompletionModal(score);
+                            });
+                    } else {
+                        showCompletionModal(score);
+                    }
+                }
 
-            }
+                function showLeaderboard() {
+                    fetch("/get_leaderboard")
+                        .then(res => res.json())
+                        .then(data => {
+                            const tbody = document.getElementById("leaderboardBody");
+                            tbody.innerHTML = "";
+                            data.forEach((row, index) => {
+                                const tr = document.createElement("tr");
+                                tr.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${row[0]}</td>
+                        <td>${row[1]}</td>
+                    `;
+                                tbody.appendChild(tr);
+                            });
+                            new bootstrap.Modal(document.getElementById('leaderboardModal')).show();
+                        });
+                }
 
             function showCompletionModal(score) {
                     $("#finalScore").text(score);
